@@ -8,50 +8,56 @@ API_KEY = os.environ["ANTHROPIC_API_KEY"]
 API_URL = "https://api.anthropic.com/v1/messages"
 MODEL = "claude-sonnet-4-5"
 
-#payload
-def ask(system_prompt: str, user_msg: str) -> str:
+SYSTEM_PROMPT = (
+    "Bạn là NoteBuddy — trợ lý ghi note thân thiện, tiếng Việt. "
+    "Trả lời ngắn gọn 1-2 câu. Khi user xin lưu note, xác nhận đã ghi."
+)
+
+messages: list[dict] = []
+
+def chat(user_input: str) -> str:
+    messages.append({"role":"user", "content": user_input})
+
+    #2. Goi API voi toan bo lich su hoi thoai
     payload = {
         "model": MODEL,
-        "max_tokens": 256,
-        "system": system_prompt,
-        "messages": [
-            {"role": "user", "content": user_msg}
-        ],
+        "max_tokens": 512,
+        "system": SYSTEM_PROMPT,
+        "messages": messages,
+    }
+    headers = {
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
     }
     r = httpx.post(API_URL, headers=headers, json=payload, timeout=30.0)
     r.raise_for_status()
-    return r.json()["content"][0]["text"]
+    data = r.json()
 
-headers = {
-    "x-api-key": API_KEY,
-    "anthropic-version": "2023-06-01",
-    "content-type": "application/json",
-}
+    #3. lay text reply, append vao lich su de LLM nho
+    reply = data["content"][0]["text"]
+    messages.append({"role":"assistant","content":reply})
+    return reply
 
-#call API
-USER = "Luu note: chieu mai hop voi team marketing"
-#luot 1: system suc tich
-print("=== System: súc tích ===")
-print(ask(
-    system_prompt="Bạn là NoteBuddy. Trả lời súc tích, tối đa 1 câu.",
-    user_msg=USER,
-))
+def main():
+    print("NoteBuddy san sang. Go /exit de thoat, /reset de hoa lich su. \n")
+    while True:
+        try:
+            user_input = input("Ban: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n tam biet!")
+            break
+        if not user_input:
+            continue
+        if user_input == "/exit":
+            print("Tạm biệt!")
+            break
+        if user_input == "/reset":
+            messages.clear()
+            print("(đã xoá lịch sử)")
+            continue
+        reply = chat(user_input)
+        print(f"NoteBuddy: {reply}\n")
 
-# Lượt 2: system "vui tinh"
-print("\n=== System: vui tính ===")
-print(ask(
-    system_prompt="Bạn là NoteBuddy phong cách Gen Z, trả lời với 1 emoji ở cuối.",
-    user_msg=USER,
-))
-
-# #pare response
-# print("--- Raq response ---")
-# print(data)
-
-# print("\n--- Cau tra loi ---")
-# text = data["content"][0]["text"]
-# print(text)
-
-# print("\n--- Token usage ---")
-# usage = data["usage"]
-# print(f"Input: {usage['input_tokens']} tok, Output: {usage['output_tokens']} tok")
+if __name__ == "__main__":
+    main()
