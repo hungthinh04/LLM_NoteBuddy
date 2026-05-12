@@ -34,4 +34,40 @@ LIST_NOTES_TOOL = {
     },
 }
 
-ALL_TOOLS = [SAVE_NOTE_TOOL,LIST_NOTES_TOOL]
+SEARCH_NOTE_TOOL = {
+    "name": "search_note",
+    "description": (
+        "Tìm các note chứa từ khoá. Trả về danh sách rút gọn. "
+        "Dùng khi user yêu cầu 'tìm/search note có chữ X'."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "keyword": {
+                "type": "string",
+                "description": "Từ khoá cần tìm (case-insensitive)",
+            },
+        },
+        "required": ["keyword"],
+    },
+}
+
+SUMMARIZE_NOTE_TOOL = {
+    "name": "summarize_note",
+    "description": (
+        "Lấy nội dung 1 note theo id để LLM tóm tắt. "
+        "Khác list_notes chỉ trả id+content rút gọn — tool này trả full text."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "id": {
+                "type": "string",
+                "description": "Note id, lấy từ list_notes hoặc search_note",
+            },
+        },
+        "required": ["id"],
+    },
+}
+
+ALL_TOOLS = [SAVE_NOTE_TOOL, LIST_NOTES_TOOL, SEARCH_NOTE_TOOL, SUMMARIZE_NOTE_TOOL]

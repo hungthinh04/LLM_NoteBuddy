@@ -1,8 +1,10 @@
-from tools_impl import save_note, list_notes
+from tools_impl import save_note, list_notes, search_note, summarize_note
 
 TOOL_REGISTRY = {
     "save_note": save_note,
     "list_notes": list_notes,
+    "search_note": search_note,
+    "summarize_note": summarize_note,
 }
 
 def run_tool(name: str, args: dict) -> dict:

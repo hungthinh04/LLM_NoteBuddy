@@ -7,6 +7,7 @@ from tools_schema import ALL_TOOLS
 
 load_dotenv()
 
+MAX_ITERATIONS = 10
 API_KEY = os.environ["ANTHROPIC_API_KEY"]
 API_URL = "https://api.anthropic.com/v1/messages"
 MODEL = "claude-sonnet-4-5"
@@ -48,10 +49,6 @@ messages: list[dict] = []
 #     messages.append({"role":"assistant","content":reply})
 #     return reply
 
-
-
-
-
 def _call_api(messages: list[dict]) -> dict:
     payload = {
         "model": MODEL,
@@ -64,61 +61,100 @@ def _call_api(messages: list[dict]) -> dict:
     r.raise_for_status()
     return r.json()
 
-def chat(user_input: str) -> str:
+def run_agent(user_input: str) -> str:
+    # === BƯỚC 1: append user input vào history ===
     messages.append({"role": "user", "content": user_input})
 
-    # Vòng API thứ nhất
-    resp = _call_api(messages)
+    # === BƯỚC 2: vòng lặp ReAct ===
+    for step in range(1, MAX_ITERATIONS + 1):
+        resp = _call_api(messages)
+        print(f"  [agent step {step}] stop_reason={resp['stop_reason']}")
 
-    # Nếu LLM trả thẳng text, xong.
-    if resp["stop_reason"] != "tool_use":
-        reply = resp["content"][0]["text"]
-        messages.append({"role": "assistant", "content": reply})
-        return reply
+        # 2a. Lưu nguyên content (text + tool_use) làm assistant turn
+        messages.append({"role": "assistant", "content": resp["content"]})
 
-    # === LLM muốn gọi tool ===
-    # Lưu nguyên content (gồm text + tool_use blocks) làm assistant turn
-    messages.append({"role": "assistant", "content": resp["content"]})
+        # 2b. Nếu không cần tool nữa → kết thúc
+        if resp["stop_reason"] != "tool_use":
+            return _extract_text(resp["content"])
 
-    # Chạy từng tool_use block
-    tool_results = []
-    for block in resp["content"]:
-        if block["type"] != "tool_use":
-            continue
-        result = run_tool(block["name"], block["input"])
-        tool_results.append({
-            "type": "tool_result",
-            "tool_use_id": block["id"],
-            "content": _json.dumps(result, ensure_ascii=False),
-        })
+        # 2c. Có tool_use → exec từng cái và append tool_result
+        tool_results = []
+        for block in resp["content"]:
+            if block["type"] != "tool_use":
+                continue
+            print(f"    -> tool: {block['name']}({block['input']})")
+            result = run_tool(block["name"], block["input"])
+            print(f"    <- result: {result}")
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": block["id"],
+                "content": _json.dumps(result, ensure_ascii=False),
+            })
+        messages.append({"role": "user", "content": tool_results})
 
-    # Gửi tool_results (role=user!) trở lại LLM
-    messages.append({"role": "user", "content": tool_results})
+    # === BƯỚC 3: hết max_iterations → thoát an toàn ===
+    return f"(Đã đạt max_iterations={MAX_ITERATIONS}, có thể agent đang stuck loop.)"
 
-    # Vòng API thứ 2 — LLM đọc kết quả tool và sinh reply cuối
-    resp2 = _call_api(messages)
-    reply = "".join(b["text"] for b in resp2["content"] if b["type"] == "text")
-    messages.append({"role": "assistant", "content": reply})
-    return reply
+
+def _extract_text(content_blocks: list) -> str:
+    return "".join(b["text"] for b in content_blocks if b["type"] == "text")
+
+
+
+
+# def chat(user_input: str) -> str:
+#     messages.append({"role": "user", "content": user_input})
+
+#     # Vòng API thứ nhất
+#     resp = _call_api(messages)
+
+#     # Nếu LLM trả thẳng text, xong.
+#     if resp["stop_reason"] != "tool_use":
+#         reply = resp["content"][0]["text"]
+#         messages.append({"role": "assistant", "content": reply})
+#         return reply
+
+#     # === LLM muốn gọi tool ===
+#     # Lưu nguyên content (gồm text + tool_use blocks) làm assistant turn
+#     messages.append({"role": "assistant", "content": resp["content"]})
+
+#     # Chạy từng tool_use block
+#     tool_results = []
+#     for block in resp["content"]:
+#         if block["type"] != "tool_use":
+#             continue
+#         result = run_tool(block["name"], block["input"])
+#         tool_results.append({
+#             "type": "tool_result",
+#             "tool_use_id": block["id"],
+#             "content": _json.dumps(result, ensure_ascii=False),
+#         })
+
+#     # Gửi tool_results (role=user!) trở lại LLM
+#     messages.append({"role": "user", "content": tool_results})
+
+#     # Vòng API thứ 2 — LLM đọc kết quả tool và sinh reply cuối
+#     resp2 = _call_api(messages)
+#     reply = "".join(b["text"] for b in resp2["content"] if b["type"] == "text")
+#     messages.append({"role": "assistant", "content": reply})
+#     return reply
 
 def main():
-    print("NoteBuddy san sang. Go /exit de thoat, /reset de hoa lich su. \n")
+    print("NoteBuddy v2 (agent loop). /exit để thoát, /reset để xoá history.\n")
     while True:
         try:
-            user_input = input("Ban: ").strip()
+            user_input = input("Bạn: ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\n tam biet!")
             break
-        if not user_input:
-            continue
         if user_input == "/exit":
-            print("Tạm biệt!")
             break
         if user_input == "/reset":
             messages.clear()
-            print("(đã xoá lịch sử)")
+            print("(reset)")
             continue
-        reply = chat(user_input)
+        if not user_input:
+            continue
+        reply = run_agent(user_input)
         print(f"NoteBuddy: {reply}\n")
 
 

@@ -27,3 +27,14 @@ def save_note(content: str) -> dict:
 def list_notes() -> dict:
     notes = sorted(_load(), key=lambda n: n["created_at"], reverse=True)
     return {"ok": True, "count": len(notes), "notes": notes}
+
+def search_note(keyword: str) -> dict:
+    keyword = keyword.lower()
+    matched = [n for n in _load() if keyword in n["content"].lower()]
+    return {"ok": True, "count": len(matched), "notes": matched}
+
+def summarize_note(id: str) -> dict:
+    for n in _load():
+        if n["id"] == id:
+            return {"ok": True, "note": n}
+    return {"ok": False, "error": f"Note {id} not found"}
